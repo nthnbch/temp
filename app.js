@@ -90,7 +90,21 @@ function appendHistoryPoint(point) {
 
 async function loadFallbackHistory() {
   try {
-    const url = new URL('./data/history.json', window.location.href);
+    const url = new URL('data/history.json', window.location.href);
+    url.searchParams.set('t', Date.now().toString());
+    const response = await fetch(url.toString(), { cache: 'no-store' });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.warn('Fallback history load failed:', error);
+    return [];
+  }
+}
+
+async function loadApiHistory() {
+  try {
+    const url = new URL('/api/history', window.location.origin);
     url.searchParams.set('t', Date.now().toString());
     const response = await fetch(url.toString(), { cache: 'no-store' });
     if (!response.ok) return [];
@@ -104,6 +118,13 @@ async function loadFallbackHistory() {
 async function getInitialHistory() {
   let history = loadSavedHistory();
   if (history.length > 0) return history;
+
+  history = await loadApiHistory();
+  if (history.length > 0) {
+    saveHistory(history);
+    return history;
+  }
+
   history = await loadFallbackHistory();
   if (history.length > 0) saveHistory(history);
   return history;
