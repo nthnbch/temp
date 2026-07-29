@@ -46,10 +46,14 @@ function formatDate(isoString) {
 // Fetch & Update Dashboard
 async function updateDashboard(isManual = false) {
   try {
-    // In serverless mode, we fetch history.json directly.
-    // We add a cache-buster query parameter to bypass browser caching when manually refreshing.
-    const url = `./data/history.json${isManual ? '?t=' + Date.now() : ''}`;
-    const response = await fetch(url);
+    const dataUrl = new URL('./data/history.json', window.location.href);
+    if (isManual) {
+      dataUrl.searchParams.set('t', Date.now().toString());
+    }
+
+    const response = await fetch(dataUrl.toString(), {
+      cache: 'no-store'
+    });
     
     if (!response.ok) {
       throw new Error(`Failed to load history file: ${response.statusText}`);
@@ -84,8 +88,11 @@ async function updateDashboard(isManual = false) {
 
   } catch (error) {
     console.error('Error updating dashboard:', error);
+    historyData = [];
     elChartEmpty.classList.remove('hidden');
-    elChartEmpty.querySelector('p').textContent = "Erreur de chargement des données.";
+    elChartEmpty.querySelector('p').textContent = 'Les données ne sont pas encore disponibles.';
+    elChartEmpty.querySelector('.subtitle').textContent = 'Le rafraîchissement automatique via GitHub Actions est en cours.';
+    resetStats();
   }
 }
 

@@ -11,47 +11,59 @@ const DATA_FILE = path.join(DATA_DIR, 'history.json');
 const SENSOR_ID = 'LAS00097866091B';
 const EGAIN_API_URL = `https://deployment.egain.io/api/indoor/${SENSOR_ID}`;
 
-async function main() {
-  console.log(`[${new Date().toISOString()}] Initiating eGain API poll...`);
-  
-  // Ensure data folder and file exist
+function ensureDataFile() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     console.log(`Created directory: ${DATA_DIR}`);
   }
+
   if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2), 'utf-8');
     console.log(`Created empty history database: ${DATA_FILE}`);
   }
+}
+
+function readHistory() {
+  try {
+    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+    return JSON.parse(raw);
+  } catch (error) {
+    console.warn('Error reading/parsing database, resetting array:', error.message);
+    return [];
+  }
+}
+
+function writeHistory(history) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(history, null, 2), 'utf-8');
+}
+
+async function main() {
+  console.log(`[${new Date().toISOString()}] Initiating eGain API poll...`);
+  ensureDataFile();
+
+  let history = readHistory();
 
   try {
-    const response = await fetch(EGAIN_API_URL);
+    const response = await fetch(EGAIN_API_URL, {
+      headers: {
+        'User-Agent': 'egain-dashboard/1.0'
+      }
+    });
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
+
     const data = await response.json();
-    
-    // Extract parameters
-    const temp = data.temperature;
-    const hum = data.humidity;
-    const timestamp = data.timestamp;
+    const temp = data?.temperature;
+    const hum = data?.humidity;
+    const timestamp = data?.timestamp;
 
     if (temp === undefined || hum === undefined || !timestamp) {
-      console.error('Invalid JSON structure returned by eGain API:', data);
-      process.exit(1);
+      console.warn('Invalid JSON structure returned by eGain API:', data);
+      return;
     }
 
-    // Read history database
-    let history = [];
-    try {
-      const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-      history = JSON.parse(raw);
-    } catch (e) {
-      console.warn('Error reading/parsing database, resetting array:', e.message);
-      history = [];
-    }
-
-    // Deduplicate
     const isDuplicate = history.some(entry => entry.timestamp === timestamp);
 
     if (!isDuplicate) {
@@ -60,20 +72,18 @@ async function main() {
         temperature: parseFloat(temp),
         humidity: parseFloat(hum)
       };
-      
+
       history.push(newEntry);
-      
-      // Save database
-      fs.writeFileSync(DATA_FILE, JSON.stringify(history, null, 2), 'utf-8');
+      writeHistory(history);
       console.log(`Successfully recorded: Temp ${temp}°C, Humidity ${hum}% at ${timestamp}`);
     } else {
       console.log(`Data point for ${timestamp} already exists in database. No update needed.`);
     }
-
   } catch (error) {
-    console.error('Failed to run scheduler fetch:', error.message);
-    process.exit(1);
+    console.warn(`Skipping update due to fetch error: ${error.message}`);
   }
 }
 
-main();
+main().catch(error => {
+  console.error('Unexpected failure in fetch workflow:', error);
+});
