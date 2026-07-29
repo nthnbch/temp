@@ -1,7 +1,7 @@
 {
-  "name": "egain-indoor-sensor-dashboard",
+  "name": "indoor-sensor-dashboard",
   "version": "1.0.0",
-  "description": "eGain Indoor Sensor Aggregator and Dashboard",
+  "description": "PORTAICLI - Indoor Sensor Aggregator and Dashboard",
   "private": true,
   "type": "module",
   "scripts": {
