@@ -1,0 +1,11 @@
+{
+  "name": "egain-indoor-sensor-dashboard",
+  "version": "1.0.0",
+  "description": "eGain Indoor Sensor Aggregator and Dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fetch": "node scripts/fetch-sensor.js",
+    "start": "python3 -m http.server 8000"
+  }
+}

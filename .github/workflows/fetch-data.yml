@@ -1,0 +1,32 @@
+name: Fetch eGain Sensor Data
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  fetch-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch Sensor Data
+        run: node scripts/fetch-sensor.js
+
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/history.json
+          git commit -m "chore: update sensor data [skip ci]" || echo "No changes to commit"
+          branch="${GITHUB_REF_NAME:-main}"
+          git push origin HEAD:"$branch"
