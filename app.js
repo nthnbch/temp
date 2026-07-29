@@ -30,6 +30,11 @@ const elHumidityMaxTime = document.getElementById('stat-humidity-max-time');
 const elChartEmpty = document.getElementById('chart-empty');
 const tabButtons = document.querySelectorAll('.tab-btn');
 
+const STORAGE_KEY = 'sensorHistory';
+const LAST_FETCH_KEY = 'sensorLastFetchAt';
+const MIN_FETCH_INTERVAL_MS = 5 * 60 * 1000;
+const MAX_HISTORY_POINTS = 288;
+
 // Helpers
 function formatTime(isoString) {
   if (!isoString) return '--:--';
@@ -43,23 +48,97 @@ function formatDate(isoString) {
   return date.toLocaleDateString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-// Fetch & Update Dashboard
+function loadSavedHistory() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function saveHistory(data) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (error) {
+    console.warn('Unable to save sensor history locally:', error);
+  }
+}
+
+function normalizeReading(data) {
+  if (!data || !data.timestamp) return null;
+  const temperature = parseFloat(data.temperature);
+  const humidity = parseFloat(data.humidity);
+  if (Number.isNaN(temperature) || Number.isNaN(humidity)) return null;
+  return { timestamp: data.timestamp, temperature, humidity };
+}
+
+function appendHistoryPoint(point) {
+  if (!point || !point.timestamp) return loadSavedHistory();
+  const history = loadSavedHistory();
+  if (history.some(entry => entry.timestamp === point.timestamp)) {
+    return history;
+  }
+
+  history.push(point);
+  const clipped = history.slice(-MAX_HISTORY_POINTS);
+  saveHistory(clipped);
+  return clipped;
+}
+
+async function loadFallbackHistory() {
+  try {
+    const url = new URL('./data/history.json', window.location.href);
+    url.searchParams.set('t', Date.now().toString());
+    const response = await fetch(url.toString(), { cache: 'no-store' });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+async function getInitialHistory() {
+  let history = loadSavedHistory();
+  if (history.length > 0) return history;
+  history = await loadFallbackHistory();
+  if (history.length > 0) saveHistory(history);
+  return history;
+}
+
+function shouldFetchLatest(isManual) {
+  if (isManual) return true;
+  const lastFetch = parseInt(localStorage.getItem(LAST_FETCH_KEY), 10);
+  if (Number.isNaN(lastFetch)) return true;
+  return Date.now() - lastFetch >= MIN_FETCH_INTERVAL_MS;
+}
+
+async function fetchLatestReading() {
+  const url = new URL('/api/latest', window.location.origin);
+  url.searchParams.set('t', Date.now().toString());
+  const response = await fetch(url.toString(), { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch latest reading: ${response.status} ${response.statusText}`);
+  }
+  const data = await response.json();
+  return normalizeReading(data);
+}
+
 async function updateDashboard(isManual = false) {
   try {
-    const dataUrl = new URL('./data/history.json', window.location.href);
-    dataUrl.searchParams.set('t', Date.now().toString()); // Force fresh fetch each time
+    historyData = await getInitialHistory();
 
-    const response = await fetch(dataUrl.toString(), {
-      cache: 'no-store'
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to load history file: ${response.statusText}`);
+    if (shouldFetchLatest(isManual)) {
+      const latestReading = await fetchLatestReading();
+      if (latestReading) {
+        historyData = appendHistoryPoint(latestReading);
+        localStorage.setItem(LAST_FETCH_KEY, Date.now().toString());
+      }
     }
-    
-    historyData = await response.json();
 
-    // Update live cards with the last recorded point in history
     let liveTemp = '--.-';
     let liveHum = '--';
     let liveTime = null;
@@ -78,19 +157,17 @@ async function updateDashboard(isManual = false) {
     elTempUpdated.textContent = formattedTimeStr;
     elHumidityUpdated.textContent = formattedTimeStr;
 
-    // Compute trends
     updateTrends(liveTemp, liveHum);
-
-    // Render chart and statistics
     processAndRenderData();
-
   } catch (error) {
     console.error('Error updating dashboard:', error);
-    historyData = [];
-    elChartEmpty.classList.remove('hidden');
-    elChartEmpty.querySelector('p').textContent = 'Les données ne sont pas encore disponibles.';
-    elChartEmpty.querySelector('.subtitle').textContent = 'Le rafraîchissement automatique via GitHub Actions est en cours.';
-    resetStats();
+    historyData = loadSavedHistory();
+    if (historyData.length === 0) {
+      elChartEmpty.classList.remove('hidden');
+      elChartEmpty.querySelector('p').textContent = 'Les données ne sont pas encore disponibles.';
+      elChartEmpty.querySelector('.subtitle').textContent = 'Vérifie ta connexion ou relance la page.';
+      resetStats();
+    }
   }
 }
 
@@ -463,7 +540,6 @@ async function forceRefresh() {
   elBtnFetch.disabled = true;
 
   try {
-    // Re-fetch the history JSON file with a cache-buster
     await updateDashboard(true);
   } catch (error) {
     console.error('Error during manual refresh fetch:', error);
@@ -521,10 +597,10 @@ tabButtons.forEach(btn => {
   });
 });
 
-// Auto refresh the frontend history fetch every 60 seconds
+// Poll the latest sensor reading every 5 minutes while the page is open
 setInterval(() => {
   updateDashboard();
-}, 60000);
+}, MIN_FETCH_INTERVAL_MS);
 
 // Init Load
 updateDashboard();
