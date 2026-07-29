@@ -127,9 +127,9 @@ app.post('/api/fetch-now', async (req, res) => {
   }
 });
 
-// Start background polling (every 5 minutes = 300,000 ms)
-const POLL_INTERVAL_MS = 5 * 60 * 1000;
-setInterval(pollSensorData, POLL_INTERVAL_MS);
+// Start background polling for temperature every 5 minutes
+const TEMP_FETCH_INTERVAL_MS = 5 * 60 * 1000;
+setInterval(pollSensorData, TEMP_FETCH_INTERVAL_MS);
 
 // Run initial fetch on startup
 pollSensorData();
