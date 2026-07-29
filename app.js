@@ -116,18 +116,23 @@ async function loadApiHistory() {
 }
 
 async function getInitialHistory() {
-  let history = loadSavedHistory();
-  if (history.length > 0) return history;
-
-  history = await loadApiHistory();
-  if (history.length > 0) {
-    saveHistory(history);
-    return history;
+  const apiHistory = await loadApiHistory();
+  if (apiHistory.length > 0) {
+    saveHistory(apiHistory);
+    return apiHistory;
   }
 
-  history = await loadFallbackHistory();
-  if (history.length > 0) saveHistory(history);
-  return history;
+  const fallbackHistory = await loadFallbackHistory();
+  if (fallbackHistory.length > 0) {
+    const savedHistory = loadSavedHistory();
+    if (savedHistory.length >= fallbackHistory.length) {
+      return savedHistory;
+    }
+    saveHistory(fallbackHistory);
+    return fallbackHistory;
+  }
+
+  return loadSavedHistory();
 }
 
 function shouldFetchLatest(isManual) {
