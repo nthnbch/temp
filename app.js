@@ -47,9 +47,7 @@ function formatDate(isoString) {
 async function updateDashboard(isManual = false) {
   try {
     const dataUrl = new URL('./data/history.json', window.location.href);
-    if (isManual) {
-      dataUrl.searchParams.set('t', Date.now().toString());
-    }
+    dataUrl.searchParams.set('t', Date.now().toString()); // Force fresh fetch each time
 
     const response = await fetch(dataUrl.toString(), {
       cache: 'no-store'
