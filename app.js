@@ -2,6 +2,7 @@
 let historyData = [];
 let activeFilter = '24h'; // '24h', '7d', 'all'
 let chart = null;
+let isInitialLoad = true;
 
 // DOM Elements
 const elLiveTemp = document.getElementById('live-temp');
@@ -157,7 +158,8 @@ async function updateDashboard(isManual = false) {
   try {
     historyData = await getInitialHistory();
 
-    if (shouldFetchLatest(isManual)) {
+    const shouldFetch = isManual || isInitialLoad || shouldFetchLatest(isManual);
+    if (shouldFetch) {
       const latestReading = await fetchLatestReading();
       if (latestReading) {
         historyData = appendHistoryPoint(latestReading);
@@ -628,5 +630,12 @@ setInterval(() => {
   updateDashboard();
 }, MIN_FETCH_INTERVAL_MS);
 
+// Auto reload the full page every 60 seconds to avoid stale UI after a browser reload
+setInterval(() => {
+  window.location.reload();
+}, 60000);
+
 // Init Load
-updateDashboard();
+updateDashboard().finally(() => {
+  isInitialLoad = false;
+});
