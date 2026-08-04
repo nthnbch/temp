@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="refresh" content="60">
-  <title>PORTAILCLI Temp Sensor</title>
+  <title>eGain Sensor - LAS00097866091B</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,8 +27,8 @@
           </svg>
         </div>
         <div class="logo-text">
-          <h1>PORTAILCLI - Temp Sensor</h1>
-          <p>Temp and Humidity Live</p>
+          <h1>eGain Climate</h1>
+          <p>Supervision Environnementale</p>
         </div>
       </div>
 
@@ -37,7 +37,7 @@
           <span class="status-dot pulsing"></span>
           <span class="sensor-id">LAS00097866091B</span>
         </div>
-        <button id="btn-fetch" class="btn btn-primary" title="Recharger l'historique">
+        <button id="btn-fetch" class="btn btn-primary" title="Forcer la mise à jour">
           <svg class="icon-spin-target" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
           </svg>
@@ -72,7 +72,7 @@
               <span class="trend-arrow">—</span> 
               <span class="trend-text">Stable</span>
             </span>
-            <span class="last-updated" id="temp-updated">Chargement...</span>
+            <span class="last-updated" id="temp-updated">Mise à jour --:--</span>
           </div>
         </div>
 
@@ -96,7 +96,7 @@
               <span class="trend-arrow">—</span> 
               <span class="trend-text">Stable</span>
             </span>
-            <span class="last-updated" id="humidity-updated">Chargement...</span>
+            <span class="last-updated" id="humidity-updated">Mise à jour --:--</span>
           </div>
         </div>
 
@@ -122,7 +122,7 @@
               <path d="M3 3v18h18M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
             </svg>
             <p>Aucune donnée historique stockée pour le moment.</p>
-            <p class="subtitle">Le robot GitHub va accumuler la data au fur et à mesure.</p>
+            <p class="subtitle">Le serveur va accumuler la data au fur et à mesure.</p>
           </div>
         </div>
       </section>
@@ -202,8 +202,8 @@
     </main>
 
     <footer class="app-footer">
-      <p>Dashboard d'agrégation de température</p>
-      <p class="footer-meta">Détecteur localisé dans le bureau PortailCli • Fréquence de rafraîchissement automatique : 5 min</p>
+      <p>Dashboard d'agrégation climatologique • Données fournies par l'API eGain indoor</p>
+      <p class="footer-meta">Détecteur localisé • Fréquence d'actualisation standard : 5 min</p>
     </footer>
 
   </div>

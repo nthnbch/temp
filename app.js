@@ -2,7 +2,6 @@
 let historyData = [];
 let activeFilter = '24h'; // '24h', '7d', 'all'
 let chart = null;
-let isInitialLoad = true;
 
 // DOM Elements
 const elLiveTemp = document.getElementById('live-temp');
@@ -31,11 +30,6 @@ const elHumidityMaxTime = document.getElementById('stat-humidity-max-time');
 const elChartEmpty = document.getElementById('chart-empty');
 const tabButtons = document.querySelectorAll('.tab-btn');
 
-const STORAGE_KEY = 'sensorHistory';
-const LAST_FETCH_KEY = 'sensorLastFetchAt';
-const MIN_FETCH_INTERVAL_MS = 5 * 60 * 1000;
-const MAX_HISTORY_POINTS = 288;
-
 // Helpers
 function formatTime(isoString) {
   if (!isoString) return '--:--';
@@ -49,129 +43,28 @@ function formatDate(isoString) {
   return date.toLocaleDateString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-function loadSavedHistory() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    return [];
-  }
-}
-
-function saveHistory(data) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (error) {
-    console.warn('Unable to save sensor history locally:', error);
-  }
-}
-
-function normalizeReading(data) {
-  if (!data || !data.timestamp) return null;
-  const temperature = parseFloat(data.temperature);
-  const humidity = parseFloat(data.humidity);
-  if (Number.isNaN(temperature) || Number.isNaN(humidity)) return null;
-  return { timestamp: data.timestamp, temperature, humidity };
-}
-
-function appendHistoryPoint(point) {
-  if (!point || !point.timestamp) return loadSavedHistory();
-  const history = loadSavedHistory();
-  if (history.some(entry => entry.timestamp === point.timestamp)) {
-    return history;
-  }
-
-  history.push(point);
-  const clipped = history.slice(-MAX_HISTORY_POINTS);
-  saveHistory(clipped);
-  return clipped;
-}
-
-async function loadFallbackHistory() {
-  try {
-    const url = new URL('data/history.json', window.location.href);
-    url.searchParams.set('t', Date.now().toString());
-    const response = await fetch(url.toString(), { cache: 'no-store' });
-    if (!response.ok) return [];
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    console.warn('Fallback history load failed:', error);
-    return [];
-  }
-}
-
-async function loadApiHistory() {
-  try {
-    const url = new URL('/api/history', window.location.origin);
-    url.searchParams.set('t', Date.now().toString());
-    const response = await fetch(url.toString(), { cache: 'no-store' });
-    if (!response.ok) return [];
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    return [];
-  }
-}
-
-async function getInitialHistory() {
-  const apiHistory = await loadApiHistory();
-  if (apiHistory.length > 0) {
-    saveHistory(apiHistory);
-    return apiHistory;
-  }
-
-  const fallbackHistory = await loadFallbackHistory();
-  if (fallbackHistory.length > 0) {
-    const savedHistory = loadSavedHistory();
-    if (savedHistory.length >= fallbackHistory.length) {
-      return savedHistory;
-    }
-    saveHistory(fallbackHistory);
-    return fallbackHistory;
-  }
-
-  return loadSavedHistory();
-}
-
-function shouldFetchLatest(isManual) {
-  if (isManual) return true;
-  const lastFetch = parseInt(localStorage.getItem(LAST_FETCH_KEY), 10);
-  if (Number.isNaN(lastFetch)) return true;
-  return Date.now() - lastFetch >= MIN_FETCH_INTERVAL_MS;
-}
-
-async function fetchLatestReading() {
-  const url = new URL('/api/latest', window.location.origin);
-  url.searchParams.set('t', Date.now().toString());
-  const response = await fetch(url.toString(), { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch latest reading: ${response.status} ${response.statusText}`);
-  }
-  const data = await response.json();
-  return normalizeReading(data);
-}
-
+// Initial Fetch & Update Dashboard
 async function updateDashboard(isManual = false) {
   try {
-    historyData = await getInitialHistory();
+    // 1. Fetch live reading and history in parallel
+    const [liveRes, historyRes] = await Promise.all([
+      fetch('/api/latest').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/history').then(r => r.ok ? r.json() : [])
+    ]);
 
-    const shouldFetch = isManual || isInitialLoad || shouldFetchLatest(isManual);
-    if (shouldFetch) {
-      const latestReading = await fetchLatestReading();
-      if (latestReading) {
-        historyData = appendHistoryPoint(latestReading);
-        localStorage.setItem(LAST_FETCH_KEY, Date.now().toString());
-      }
-    }
+    historyData = historyRes || [];
 
+    // 2. Update live cards
     let liveTemp = '--.-';
     let liveHum = '--';
     let liveTime = null;
 
-    if (historyData.length > 0) {
+    if (liveRes) {
+      liveTemp = parseFloat(liveRes.temperature).toFixed(1);
+      liveHum = Math.round(liveRes.humidity);
+      liveTime = liveRes.timestamp;
+    } else if (historyData.length > 0) {
+      // Fallback to latest in history
       const latest = historyData[historyData.length - 1];
       liveTemp = latest.temperature.toFixed(1);
       liveHum = Math.round(latest.humidity);
@@ -181,25 +74,22 @@ async function updateDashboard(isManual = false) {
     elLiveTemp.textContent = liveTemp;
     elLiveHumidity.textContent = liveHum;
 
-    const formattedTimeStr = liveTime ? `Dernière mesure : ${formatTime(liveTime)}` : 'Aucune donnée';
+    const formattedTimeStr = liveTime ? `Mise à jour à ${formatTime(liveTime)}` : 'Mise à jour --:--';
     elTempUpdated.textContent = formattedTimeStr;
     elHumidityUpdated.textContent = formattedTimeStr;
 
+    // 3. Compute trends
     updateTrends(liveTemp, liveHum);
+
+    // 4. Render chart and statistics
     processAndRenderData();
+
   } catch (error) {
     console.error('Error updating dashboard:', error);
-    historyData = loadSavedHistory();
-    if (historyData.length === 0) {
-      elChartEmpty.classList.remove('hidden');
-      elChartEmpty.querySelector('p').textContent = 'Les données ne sont pas encore disponibles.';
-      elChartEmpty.querySelector('.subtitle').textContent = 'Vérifie ta connexion ou relance la page.';
-      resetStats();
-    }
   }
 }
 
-// Compute trends (comparing the latest point with the second-to-last)
+// Compute trends (compared to previous stored record)
 function updateTrends(currentTemp, currentHum) {
   if (historyData.length < 2) {
     setTrend(elTempTrend, 'stable');
@@ -209,7 +99,9 @@ function updateTrends(currentTemp, currentHum) {
 
   const currentT = parseFloat(currentTemp);
   const currentH = parseFloat(currentHum);
-  const lastEntry = historyData[historyData.length - 2];
+  
+  // Find the last record in history that has a different timestamp than the live one
+  let lastEntry = historyData[historyData.length - 2];
   
   if (isNaN(currentT) || isNaN(currentH) || !lastEntry) {
     setTrend(elTempTrend, 'stable');
@@ -220,7 +112,7 @@ function updateTrends(currentTemp, currentHum) {
   const prevT = lastEntry.temperature;
   const prevH = lastEntry.humidity;
 
-  // Temp trend
+  // Temperature trend
   if (currentT > prevT + 0.05) {
     setTrend(elTempTrend, 'up');
   } else if (currentT < prevT - 0.05) {
@@ -390,6 +282,7 @@ function renderChart(data) {
   humGradient.addColorStop(1, 'rgba(56, 189, 248, 0.00)');
 
   if (chart) {
+    // If chart exists, update values
     chart.data.labels = labels;
     chart.data.datasets[0].data = tempValues;
     chart.data.datasets[1].data = humidityValues;
@@ -541,7 +434,7 @@ function renderChart(data) {
             }
           },
           grid: {
-            drawOnChartArea: false,
+            drawOnChartArea: false, // only show grid lines for temperature to prevent clutter
             borderColor: 'rgba(255, 255, 255, 0.05)'
           },
           ticks: {
@@ -568,14 +461,25 @@ async function forceRefresh() {
   elBtnFetch.disabled = true;
 
   try {
-    await updateDashboard(true);
+    const response = await fetch('/api/fetch-now', { method: 'POST' });
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log('Force fetch completed successfully:', result.data);
+    } else {
+      console.warn('Force fetch returned failure:', result.error);
+    }
   } catch (error) {
     console.error('Error during manual refresh fetch:', error);
   } finally {
+    // Reload dashboard state
+    await updateDashboard(true);
+    
+    // Stop animation
     setTimeout(() => {
       icon.classList.remove('spinning');
       elBtnFetch.disabled = false;
-    }, 600);
+    }, 600); // minor delay for nice visual feedback
   }
 }
 
@@ -595,6 +499,7 @@ function exportData(format) {
     filename += '.json';
     mimeType = 'application/json';
   } else if (format === 'csv') {
+    // Generate CSV columns
     const headers = ['Timestamp', 'Temperature_C', 'Humidity_Percent'];
     const rows = historyData.map(d => [d.timestamp, d.temperature, d.humidity].join(','));
     content = [headers.join(','), ...rows].join('\n');
@@ -602,6 +507,7 @@ function exportData(format) {
     mimeType = 'text/csv';
   }
 
+  // Trigger download
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -625,17 +531,10 @@ tabButtons.forEach(btn => {
   });
 });
 
-// Poll the latest sensor reading every 5 minutes while the page is open
+// Auto refresh frontend UI state (not forcing server hit, just loading history) every 60 seconds
 setInterval(() => {
   updateDashboard();
-}, MIN_FETCH_INTERVAL_MS);
-
-// Auto reload the full page every 60 seconds to avoid stale UI after a browser reload
-setInterval(() => {
-  window.location.reload();
 }, 60000);
 
 // Init Load
-updateDashboard().finally(() => {
-  isInitialLoad = false;
-});
+updateDashboard();
