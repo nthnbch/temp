@@ -19,80 +19,118 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Path to data file
 const DATA_DIR = path.join(__dirname, 'data');
-const DATA_FILE = path.join(DATA_DIR, 'history.json');
-const SENSOR_ID = 'LAS00097866091B';
-const EGAIN_API_URL = `https://deployment.egain.io/api/indoor/${SENSOR_ID}`;
+const DEFAULT_ROOM = 'portailcli';
+const ROOM_CONFIG = {
+  portailcli: { label: 'PortailCLI', sensorId: 'LAS00097866091B', endpoint: 'indoor' },
+  transverse: { label: 'Transverse', sensorId: 'LAS00108601091B', endpoint: 'verify' },
+  ct: { label: 'CT', sensorId: 'LAS00108602091B', endpoint: 'verify' },
+  m210: { label: 'M210', sensorId: 'LAS00108230091B', endpoint: 'indoor' },
+  m221: { label: 'M221', sensorId: 'LAS00098009091B', endpoint: 'indoor' },
+  m228: { label: 'M228', sensorId: 'LAS00108232091B', endpoint: 'indoor' }
+};
+
+function getRoomConfig(roomKey = DEFAULT_ROOM) {
+  const normalized = String(roomKey || DEFAULT_ROOM).toLowerCase();
+  return ROOM_CONFIG[normalized] || ROOM_CONFIG[DEFAULT_ROOM];
+}
+
+function resolveSensorId(roomKey = DEFAULT_ROOM) {
+  return getRoomConfig(roomKey).sensorId;
+}
+
+function getEgainUrl(roomKey = DEFAULT_ROOM) {
+  const config = getRoomConfig(roomKey);
+  const sensorId = config.sensorId;
+
+  if (config.endpoint === 'verify') {
+    return `https://deployment.egain.io/device/verify/${sensorId}`;
+  }
+
+  return `https://deployment.egain.io/indoor/${sensorId}?unit=9`;
+}
+
+function getHistoryFilePath(roomKey = DEFAULT_ROOM) {
+  const sensorId = resolveSensorId(roomKey);
+  return path.join(DATA_DIR, `${sensorId}.json`);
+}
 
 // Ensure data directory and file exist
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2), 'utf-8');
-}
+
+Object.keys(ROOM_CONFIG).forEach((roomKey) => {
+  const historyFile = getHistoryFilePath(roomKey);
+  if (!fs.existsSync(historyFile)) {
+    fs.writeFileSync(historyFile, JSON.stringify([], null, 2), 'utf-8');
+  }
+});
 
 // Helper to read history
-function readHistory() {
+function readHistory(roomKey = DEFAULT_ROOM) {
+  const filePath = getHistoryFilePath(roomKey);
+
   try {
-    const rawData = fs.readFileSync(DATA_FILE, 'utf-8');
+    const rawData = fs.readFileSync(filePath, 'utf-8');
     return JSON.parse(rawData);
   } catch (error) {
-    console.error('Error reading history file, resetting to empty array:', error);
+    console.error(`Error reading history for ${roomKey}, resetting to empty array:`, error);
     return [];
   }
 }
 
 // Helper to write history
-function writeHistory(data) {
+function writeHistory(roomKey, data) {
+  const filePath = getHistoryFilePath(roomKey);
+
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
   } catch (error) {
-    console.error('Error writing to history file:', error);
+    console.error(`Error writing history for ${roomKey}:`, error);
   }
 }
 
 // Function to fetch latest data and append to history if new
-async function pollSensorData() {
-  console.log(`[${new Date().toISOString()}] Polling sensor data from eGain API...`);
+async function pollSensorData(roomKey = DEFAULT_ROOM) {
+  const sensorId = resolveSensorId(roomKey);
+  const eGainUrl = getEgainUrl(roomKey);
+  console.log(`[${new Date().toISOString()}] Polling sensor data for ${roomKey} (${sensorId}) from eGain...`);
   try {
-    const response = await fetch(EGAIN_API_URL);
+    const response = await fetch(eGainUrl);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const data = await response.json();
-    
-    // Extract values
+
     const temp = data.temperature;
     const hum = data.humidity;
-    const timestamp = data.timestamp; // e.g. "2026-07-29T09:14:15Z"
+    const timestamp = data.timestamp;
 
     if (temp === undefined || hum === undefined || !timestamp) {
       console.warn('Invalid response structure received from eGain:', data);
       return null;
     }
 
-    const history = readHistory();
-    
-    // Check if timestamp already exists in history to prevent duplicates
+    const history = readHistory(roomKey);
     const isDuplicate = history.some(entry => entry.timestamp === timestamp);
-    
+
     if (!isDuplicate) {
       const newEntry = {
         timestamp,
         temperature: parseFloat(temp),
         humidity: parseFloat(hum)
       };
-      
+
       history.push(newEntry);
-      writeHistory(history);
-      console.log(`Added new data point: Temp ${temp}°C, Humidity ${hum}% at ${timestamp}`);
+      writeHistory(roomKey, history);
+      console.log(`Added new data point for ${roomKey}: Temp ${temp}°C, Humidity ${hum}% at ${timestamp}`);
       return newEntry;
-    } else {
-      console.log(`Data for timestamp ${timestamp} already stored. Skipping.`);
-      return history[history.length - 1];
     }
+
+    console.log(`Data for timestamp ${timestamp} already stored for ${roomKey}. Skipping.`);
+    return history[history.length - 1];
   } catch (error) {
-    console.error('Failed to poll eGain API:', error.message);
+    console.error(`Failed to poll eGain API for ${roomKey}:`, error.message);
     return null;
   }
 }
@@ -100,7 +138,9 @@ async function pollSensorData() {
 // API Endpoint: Get latest live reading directly
 app.get('/api/latest', async (req, res) => {
   try {
-    const response = await fetch(EGAIN_API_URL);
+    const roomKey = req.query.room || DEFAULT_ROOM;
+    const eGainUrl = getEgainUrl(roomKey);
+    const response = await fetch(eGainUrl);
     if (!response.ok) {
       return res.status(response.status).json({ error: 'Failed to fetch from eGain API' });
     }
@@ -113,13 +153,15 @@ app.get('/api/latest', async (req, res) => {
 
 // API Endpoint: Get aggregated history
 app.get('/api/history', (req, res) => {
-  const history = readHistory();
+  const roomKey = req.query.room || DEFAULT_ROOM;
+  const history = readHistory(roomKey);
   res.json(history);
 });
 
 // API Endpoint: Force poll now
 app.post('/api/fetch-now', async (req, res) => {
-  const result = await pollSensorData();
+  const roomKey = req.query.room || DEFAULT_ROOM;
+  const result = await pollSensorData(roomKey);
   if (result) {
     res.json({ success: true, data: result });
   } else {
@@ -129,10 +171,16 @@ app.post('/api/fetch-now', async (req, res) => {
 
 // Start background polling for temperature every 5 minutes
 const TEMP_FETCH_INTERVAL_MS = 5 * 60 * 1000;
-setInterval(pollSensorData, TEMP_FETCH_INTERVAL_MS);
+setInterval(() => {
+  Object.keys(ROOM_CONFIG).forEach((roomKey) => {
+    pollSensorData(roomKey);
+  });
+}, TEMP_FETCH_INTERVAL_MS);
 
 // Run initial fetch on startup
-pollSensorData();
+Object.keys(ROOM_CONFIG).forEach((roomKey) => {
+  pollSensorData(roomKey);
+});
 
 app.listen(PORT, () => {
   console.log(`==================================================`);

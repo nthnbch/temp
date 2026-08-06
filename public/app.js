@@ -14,6 +14,19 @@ const elHumidityTrend = document.getElementById('humidity-trend');
 const elBtnFetch = document.getElementById('btn-fetch');
 const elBtnExportCSV = document.getElementById('btn-export-csv');
 const elBtnExportJSON = document.getElementById('btn-export-json');
+const officeSelect = document.getElementById('office-select');
+const elOfficeName = document.getElementById('selected-office-name');
+const elOfficeMeta = document.getElementById('selected-office-meta');
+const elSensorId = document.getElementById('office-sensor-id');
+
+const OFFICE_CONFIG = {
+  portailcli: { label: 'PortailCLI', sensorId: 'LAS00097866091B', endpoint: 'indoor' },
+  transverse: { label: 'Transverse', sensorId: 'LAS00108601091B', endpoint: 'verify' },
+  ct: { label: 'CT', sensorId: 'LAS00108602091B', endpoint: 'verify' },
+  m210: { label: 'M210', sensorId: 'LAS00108230091B', endpoint: 'indoor' },
+  m221: { label: 'M221', sensorId: 'LAS00098009091B', endpoint: 'indoor' },
+  m228: { label: 'M228', sensorId: 'LAS00108232091B', endpoint: 'indoor' }
+};
 
 const elTempMin = document.getElementById('stat-temp-min');
 const elTempAvg = document.getElementById('stat-temp-avg');
@@ -43,13 +56,43 @@ function formatDate(isoString) {
   return date.toLocaleDateString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+function getSelectedOffice() {
+  const selectedValue = officeSelect ? officeSelect.value : 'portailcli';
+  const office = OFFICE_CONFIG[selectedValue] || OFFICE_CONFIG.portailcli;
+  return { ...office, key: selectedValue || 'portailcli' };
+}
+
+function updateSelectedOfficeInfo() {
+  const office = getSelectedOffice();
+  const metaText = `Détecteur localisé dans la salle ${office.label} • Fréquence de rafraîchissement automatique : 5 min`;
+
+  if (elOfficeName) {
+    elOfficeName.textContent = `TDI • ${office.label}`;
+  }
+
+  if (elOfficeMeta) {
+    elOfficeMeta.textContent = metaText;
+  }
+
+  const footerMeta = document.querySelector('.footer-meta');
+  if (footerMeta) {
+    footerMeta.textContent = metaText;
+  }
+
+  if (elSensorId) {
+    elSensorId.textContent = office.sensorId;
+  }
+}
+
 // Initial Fetch & Update Dashboard
 async function updateDashboard(isManual = false) {
   try {
-    // 1. Fetch live reading and history in parallel
+    const selectedRoom = getSelectedOffice().key || 'portailcli';
+
+    // 1. Fetch live reading and history in parallel for the selected room
     const [liveRes, historyRes] = await Promise.all([
-      fetch('/api/latest').then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch('/api/history').then(r => r.ok ? r.json() : [])
+      fetch(`/api/latest?room=${encodeURIComponent(selectedRoom)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/history?room=${encodeURIComponent(selectedRoom)}`).then(r => r.ok ? r.json() : [])
     ]);
 
     historyData = historyRes || [];
@@ -461,7 +504,8 @@ async function forceRefresh() {
   elBtnFetch.disabled = true;
 
   try {
-    const response = await fetch('/api/fetch-now', { method: 'POST' });
+    const selectedRoom = getSelectedOffice().key || 'portailcli';
+    const response = await fetch(`/api/fetch-now?room=${encodeURIComponent(selectedRoom)}`, { method: 'POST' });
     const result = await response.json();
     
     if (result.success) {
@@ -518,6 +562,13 @@ function exportData(format) {
 }
 
 // Event Listeners
+if (officeSelect) {
+  officeSelect.addEventListener('change', () => {
+    updateSelectedOfficeInfo();
+    updateDashboard();
+  });
+}
+
 elBtnFetch.addEventListener('click', forceRefresh);
 elBtnExportCSV.addEventListener('click', () => exportData('csv'));
 elBtnExportJSON.addEventListener('click', () => exportData('json'));
@@ -537,4 +588,5 @@ setInterval(() => {
 }, 60000);
 
 // Init Load
+updateSelectedOfficeInfo();
 updateDashboard();

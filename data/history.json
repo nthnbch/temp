@@ -785,6 +785,21 @@
     "humidity": 59
   },
   {
+    "timestamp": "2026-08-05T06:47:47Z",
+    "temperature": 23.65,
+    "humidity": 67
+  },
+  {
+    "timestamp": "2026-08-05T06:49:47Z",
+    "temperature": 23.6,
+    "humidity": 67
+  },
+  {
+    "timestamp": "2026-08-05T06:51:48Z",
+    "temperature": 23.59,
+    "humidity": 67
+  },
+  {
     "timestamp": "2026-08-05T07:09:37Z",
     "temperature": 23.69,
     "humidity": 68

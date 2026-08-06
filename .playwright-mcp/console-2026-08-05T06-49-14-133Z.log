@@ -1,0 +1,8 @@
+[   11816ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/favicon.ico:0
+[   37706ms] [LOG] Force fetch completed successfully: {timestamp: 2026-08-05T06:49:47Z, temperature: 23.6, humidity: 67} @ http://localhost:3000/app.js:507
+[   42306ms] [LOG] Force fetch completed successfully: {timestamp: 2026-08-05T06:49:47Z, temperature: 23.6, humidity: 67} @ http://localhost:3000/app.js:507
+[ 1323701ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/api/latest?room=portailcli:0
+[ 1323701ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/api/history?room=portailcli:0
+[ 1323702ms] [ERROR] Error updating dashboard: TypeError: Failed to fetch
+    at updateDashboard (http://localhost:3000/app.js:95:7)
+    at http://localhost:3000/app.js:587:3 @ http://localhost:3000/app.js:130
