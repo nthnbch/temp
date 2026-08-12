@@ -19,10 +19,7 @@ const elOfficeName = document.getElementById('selected-office-name');
 const elOfficeMeta = document.getElementById('selected-office-meta');
 const elSensorId = document.getElementById('office-sensor-id');
 
-const ENDPOINT_TO_SENSOR = {
-  indoor: 'LAS00097866091B',
-  verify: 'LAS00108601091B'
-};
+
 
 const OFFICE_CONFIG = {
   portailcli: { label: 'PortailCLI', sensorId: 'LAS00097866091B', endpoint: 'indoor' },
@@ -92,15 +89,13 @@ function updateSelectedOfficeInfo() {
 // Initial Fetch & Update Dashboard
 async function updateDashboard(isManual = false) {
   try {
-    const selectedRoom = getSelectedOffice().key || 'portailcli';
+    const office = getSelectedOffice();
+    const roomKey = office.key || 'portailcli';
 
     // 1. Fetch live reading and history in parallel for the selected room
-    const office = getSelectedOffice();
-    const endpoint = office.endpoint || 'indoor';
-
     const [liveRes, historyRes] = await Promise.all([
-      fetch(`/api/latest?endpoint=${encodeURIComponent(endpoint)}`).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`/api/history?endpoint=${encodeURIComponent(endpoint)}`).then(r => r.ok ? r.json() : [])
+      fetch(`/api/latest?room=${encodeURIComponent(roomKey)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/history?room=${encodeURIComponent(roomKey)}`).then(r => r.ok ? r.json() : [])
     ]);
 
     historyData = historyRes || [];
@@ -513,8 +508,8 @@ async function forceRefresh() {
 
   try {
     const office = getSelectedOffice();
-    const endpoint = office.endpoint || 'indoor';
-    const response = await fetch(`/api/fetch-now?endpoint=${encodeURIComponent(endpoint)}`, { method: 'POST' });
+    const roomKey = office.key || 'portailcli';
+    const response = await fetch(`/api/fetch-now?room=${encodeURIComponent(roomKey)}`, { method: 'POST' });
     const result = await response.json();
     
     if (result.success) {
@@ -574,6 +569,11 @@ function exportData(format) {
 if (officeSelect) {
   officeSelect.addEventListener('change', () => {
     updateSelectedOfficeInfo();
+    // Destroy chart so it re-creates with fresh gradients for the new room
+    if (chart) {
+      chart.destroy();
+      chart = null;
+    }
     updateDashboard();
   });
 }

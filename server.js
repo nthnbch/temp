@@ -186,7 +186,7 @@ app.listen(PORT, () => {
   console.log(`==================================================`);
   console.log(`  eGain Sensor Aggregator Server Running`);
   console.log(`  Local Address: http://localhost:${PORT}`);
-  console.log(`  Sensor ID:     ${SENSOR_ID}`);
+  console.log(`  Rooms:         ${Object.keys(ROOM_CONFIG).join(', ')}`);
   console.log(`  Interval:      Every 5 minutes`);
   console.log(`==================================================`);
 });

@@ -1,27 +1,52 @@
 import fs from 'fs';
 import path from 'path';
 
-const DATA_FILE = path.join(process.cwd(), 'data', 'history.json');
+const ROOM_CONFIG = {
+  portailcli: { sensorId: 'LAS00097866091B', endpoint: 'indoor' },
+  transverse: { sensorId: 'LAS00108601091B', endpoint: 'verify' },
+  ct: { sensorId: 'LAS00108602091B', endpoint: 'verify' },
+  m210: { sensorId: 'LAS00108230091B', endpoint: 'indoor' },
+  m221: { sensorId: 'LAS00098009091B', endpoint: 'indoor' },
+  m228: { sensorId: 'LAS00108232091B', endpoint: 'indoor' }
+};
 
-function readHistory() {
+function getEgainUrl(roomKey) {
+  const config = ROOM_CONFIG[roomKey] || ROOM_CONFIG.portailcli;
+  const sensorId = config.sensorId;
+
+  if (config.endpoint === 'verify') {
+    return `https://deployment.egain.io/device/verify/${sensorId}`;
+  }
+
+  return `https://deployment.egain.io/indoor/${sensorId}?unit=9`;
+}
+
+function getHistoryFilePath(roomKey) {
+  const config = ROOM_CONFIG[roomKey] || ROOM_CONFIG.portailcli;
+  return path.join(process.cwd(), 'data', `${config.sensorId}.json`);
+}
+
+function readHistory(roomKey) {
+  const filePath = getHistoryFilePath(roomKey);
   try {
-    const rawData = fs.readFileSync(DATA_FILE, 'utf-8');
-    const history = JSON.parse(rawData);
-    return history;
+    if (fs.existsSync(filePath)) {
+      const rawData = fs.readFileSync(filePath, 'utf-8');
+      return JSON.parse(rawData);
+    }
+    return [];
   } catch (error) {
     return [];
   }
 }
 
-function writeHistory(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+function writeHistory(roomKey, data) {
+  const filePath = getHistoryFilePath(roomKey);
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
-
-// Map endpoints to sensor IDs
-const ENDPOINT_TO_SENSOR = {
-  indoor: 'LAS00097866091B',
-  verify: 'LAS00108601091B'
-};
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -29,11 +54,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const endpoint = req.query.endpoint || 'indoor';
-    const sensorId = ENDPOINT_TO_SENSOR[endpoint] || 'LAS00097866091B';
-    const EGAIN_API_URL = `https://deployment.egain.io/api/indoor/${sensorId}`;
+    const roomKey = (req.query.room || 'portailcli').toLowerCase();
+    const eGainUrl = getEgainUrl(roomKey);
 
-    const response = await fetch(EGAIN_API_URL, {
+    const response = await fetch(eGainUrl, {
       headers: {
         'User-Agent': 'egain-dashboard/1.0'
       }
@@ -50,7 +74,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid eGain response structure' });
     }
 
-    const history = readHistory();
+    const history = readHistory(roomKey);
     const isDuplicate = history.some(entry => entry.timestamp === timestamp);
 
     let resultEntry;
@@ -61,7 +85,7 @@ export default async function handler(req, res) {
         humidity: parseFloat(humidity)
       };
       history.push(resultEntry);
-      writeHistory(history);
+      writeHistory(roomKey, history);
     } else {
       resultEntry = history[history.length - 1];
     }
