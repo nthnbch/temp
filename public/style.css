@@ -175,6 +175,7 @@ body {
   background-repeat: no-repeat;
   background-position: right 0.15rem center;
   background-size: 1rem;
+  border-radius: 18px;
 }
 
 #office-select option {

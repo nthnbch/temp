@@ -19,6 +19,11 @@ const elOfficeName = document.getElementById('selected-office-name');
 const elOfficeMeta = document.getElementById('selected-office-meta');
 const elSensorId = document.getElementById('office-sensor-id');
 
+const ENDPOINT_TO_SENSOR = {
+  indoor: 'LAS00097866091B',
+  verify: 'LAS00108601091B'
+};
+
 const OFFICE_CONFIG = {
   portailcli: { label: 'PortailCLI', sensorId: 'LAS00097866091B', endpoint: 'indoor' },
   transverse: { label: 'Transverse', sensorId: 'LAS00108601091B', endpoint: 'verify' },
@@ -90,9 +95,12 @@ async function updateDashboard(isManual = false) {
     const selectedRoom = getSelectedOffice().key || 'portailcli';
 
     // 1. Fetch live reading and history in parallel for the selected room
+    const office = getSelectedOffice();
+    const endpoint = office.endpoint || 'indoor';
+
     const [liveRes, historyRes] = await Promise.all([
-      fetch(`/api/latest?room=${encodeURIComponent(selectedRoom)}`).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`/api/history?room=${encodeURIComponent(selectedRoom)}`).then(r => r.ok ? r.json() : [])
+      fetch(`/api/latest?endpoint=${encodeURIComponent(endpoint)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/history?endpoint=${encodeURIComponent(endpoint)}`).then(r => r.ok ? r.json() : [])
     ]);
 
     historyData = historyRes || [];
@@ -504,8 +512,9 @@ async function forceRefresh() {
   elBtnFetch.disabled = true;
 
   try {
-    const selectedRoom = getSelectedOffice().key || 'portailcli';
-    const response = await fetch(`/api/fetch-now?room=${encodeURIComponent(selectedRoom)}`, { method: 'POST' });
+    const office = getSelectedOffice();
+    const endpoint = office.endpoint || 'indoor';
+    const response = await fetch(`/api/fetch-now?endpoint=${encodeURIComponent(endpoint)}`, { method: 'POST' });
     const result = await response.json();
     
     if (result.success) {

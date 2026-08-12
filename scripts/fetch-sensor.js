@@ -8,8 +8,20 @@ const __dirname = path.dirname(__filename);
 // Paths relative to project root (since we run this from repo root)
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'history.json');
-const SENSOR_ID = 'LAS00097866091B';
-const EGAIN_API_URL = `https://deployment.egain.io/api/indoor/${SENSOR_ID}`;
+
+const ENDPOINT_TO_SENSOR = {
+  indoor: 'LAS00097866091B',
+  verify: 'LAS00108601091B'
+};
+
+const OFFICE_CONFIG = {
+  portailcli: { label: 'PortailCLI', sensorId: 'LAS00097866091B', endpoint: 'indoor' },
+  transverse: { label: 'Transverse', sensorId: 'LAS00108601091B', endpoint: 'verify' },
+  ct: { label: 'CT', sensorId: 'LAS00108602091B', endpoint: 'verify' },
+  m210: { label: 'M210', sensorId: 'LAS00108230091B', endpoint: 'indoor' },
+  m221: { label: 'M221', sensorId: 'LAS00098009091B', endpoint: 'indoor' },
+  m228: { label: 'M228', sensorId: 'LAS00108232091B', endpoint: 'indoor' }
+};
 
 function ensureDataFile() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -37,11 +49,8 @@ function writeHistory(history) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(history, null, 2), 'utf-8');
 }
 
-async function main() {
-  console.log(`[${new Date().toISOString()}] Initiating eGain API poll...`);
-  ensureDataFile();
-
-  let history = readHistory();
+async function fetchSensorData(sensorId) {
+  const EGAIN_API_URL = `https://deployment.egain.io/api/indoor/${sensorId}`;
 
   try {
     const response = await fetch(EGAIN_API_URL, {
@@ -60,28 +69,52 @@ async function main() {
     const timestamp = data?.timestamp;
 
     if (temp === undefined || hum === undefined || !timestamp) {
-      console.warn('Invalid JSON structure returned by eGain API:', data);
-      return;
+      console.warn('Invalid JSON structure returned by eGain API for', sensorId, ':', data);
+      return null;
     }
 
-    const isDuplicate = history.some(entry => entry.timestamp === timestamp);
-
-    if (!isDuplicate) {
-      const newEntry = {
-        timestamp,
-        temperature: parseFloat(temp),
-        humidity: parseFloat(hum)
-      };
-
-      history.push(newEntry);
-      writeHistory(history);
-      console.log(`Successfully recorded: Temp ${temp}°C, Humidity ${hum}% at ${timestamp}`);
-    } else {
-      console.log(`Data point for ${timestamp} already exists in database. No update needed.`);
-    }
+    return {
+      sensorId,
+      temperature: parseFloat(temp),
+      humidity: parseFloat(hum),
+      timestamp
+    };
   } catch (error) {
-    console.warn(`Skipping update due to fetch error: ${error.message}`);
+    console.warn(`Failed to fetch data for ${sensorId}:`, error.message);
+    return null;
   }
+}
+
+async function main() {
+  console.log(`[${new Date().toISOString()}] Initiating eGain sensor data poll...`);
+  ensureDataFile();
+
+  let history = readHistory();
+
+  // Fetch data for all known offices
+  for (const [officeKey, officeConfig] of Object.entries(OFFICE_CONFIG)) {
+    const sensorId = officeConfig.sensorId;
+    const result = await fetchSensorData(sensorId);
+
+    if (result) {
+      const isDuplicate = history.some(entry => entry.timestamp === result.timestamp);
+
+      if (!isDuplicate) {
+        const newEntry = {
+          timestamp: result.timestamp,
+          temperature: result.temperature,
+          humidity: result.humidity
+        };
+        history.push(newEntry);
+        console.log(`Recorded data for ${officeKey}: Temp ${result.temperature}°C, Humidity ${result.humidity}% at ${result.timestamp}`);
+      } else {
+        console.log(`Data point for ${result.timestamp} already exists in database for ${officeKey}. No update needed.`);
+      }
+    }
+  }
+
+  writeHistory(history);
+  console.log(`Finished poll. Total records: ${history.length}`);
 }
 
 main().catch(error => {

@@ -1,14 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 
-const SENSOR_ID = 'LAS00097866091B';
-const EGAIN_API_URL = `https://deployment.egain.io/api/indoor/${SENSOR_ID}`;
 const DATA_FILE = path.join(process.cwd(), 'data', 'history.json');
 
 function readHistory() {
   try {
     const rawData = fs.readFileSync(DATA_FILE, 'utf-8');
-    return JSON.parse(rawData);
+    const history = JSON.parse(rawData);
+    return history;
   } catch (error) {
     return [];
   }
@@ -18,13 +17,28 @@ function writeHistory(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
 }
 
+// Map endpoints to sensor IDs
+const ENDPOINT_TO_SENSOR = {
+  indoor: 'LAS00097866091B',
+  verify: 'LAS00108601091B'
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const response = await fetch(EGAIN_API_URL);
+    const endpoint = req.query.endpoint || 'indoor';
+    const sensorId = ENDPOINT_TO_SENSOR[endpoint] || 'LAS00097866091B';
+    const EGAIN_API_URL = `https://deployment.egain.io/api/indoor/${sensorId}`;
+
+    const response = await fetch(EGAIN_API_URL, {
+      headers: {
+        'User-Agent': 'egain-dashboard/1.0'
+      }
+    });
+
     if (!response.ok) {
       return res.status(response.status).json({ error: 'Failed to fetch from eGain API' });
     }
