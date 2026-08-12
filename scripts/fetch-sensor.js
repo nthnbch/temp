@@ -7,12 +7,6 @@ const __dirname = path.dirname(__filename);
 
 // Paths relative to project root (since we run this from repo root)
 const DATA_DIR = path.join(process.cwd(), 'data');
-const DATA_FILE = path.join(DATA_DIR, 'history.json');
-
-const ENDPOINT_TO_SENSOR = {
-  indoor: 'LAS00097866091B',
-  verify: 'LAS00108601091B'
-};
 
 const OFFICE_CONFIG = {
   portailcli: { label: 'PortailCLI', sensorId: 'LAS00097866091B', endpoint: 'indoor' },
@@ -23,34 +17,40 @@ const OFFICE_CONFIG = {
   m228: { label: 'M228', sensorId: 'LAS00108232091B', endpoint: 'indoor' }
 };
 
-function ensureDataFile() {
+function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     console.log(`Created directory: ${DATA_DIR}`);
   }
-
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2), 'utf-8');
-    console.log(`Created empty history database: ${DATA_FILE}`);
-  }
 }
 
-function readHistory() {
+function getSensorFilePath(sensorId) {
+  return path.join(DATA_DIR, `${sensorId}.json`);
+}
+
+function readHistory(sensorId) {
+  const filePath = getSensorFilePath(sensorId);
   try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    return JSON.parse(raw);
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      return JSON.parse(raw);
+    }
+    return [];
   } catch (error) {
-    console.warn('Error reading/parsing database, resetting array:', error.message);
+    console.warn(`Error reading/parsing database for ${sensorId}, resetting array:`, error.message);
     return [];
   }
 }
 
-function writeHistory(history) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(history, null, 2), 'utf-8');
+function writeHistory(sensorId, history) {
+  const filePath = getSensorFilePath(sensorId);
+  fs.writeFileSync(filePath, JSON.stringify(history, null, 2), 'utf-8');
 }
 
-async function fetchSensorData(sensorId) {
-  const EGAIN_API_URL = `https://deployment.egain.io/api/indoor/${sensorId}`;
+async function fetchSensorData(sensorId, endpoint) {
+  const EGAIN_API_URL = endpoint === 'verify' 
+    ? `https://deployment.egain.io/device/verify/${sensorId}`
+    : `https://deployment.egain.io/indoor/${sensorId}?unit=9`;
 
   try {
     const response = await fetch(EGAIN_API_URL, {
@@ -86,17 +86,17 @@ async function fetchSensorData(sensorId) {
 }
 
 async function main() {
-  console.log(`[${new Date().toISOString()}] Initiating eGain sensor data poll...`);
-  ensureDataFile();
-
-  let history = readHistory();
+  console.log(`[${new Date().toISOString()}] Initiating eGain sensor data poll for all rooms...`);
+  ensureDataDir();
 
   // Fetch data for all known offices
   for (const [officeKey, officeConfig] of Object.entries(OFFICE_CONFIG)) {
     const sensorId = officeConfig.sensorId;
-    const result = await fetchSensorData(sensorId);
+    const endpoint = officeConfig.endpoint;
+    const result = await fetchSensorData(sensorId, endpoint);
 
     if (result) {
+      let history = readHistory(sensorId);
       const isDuplicate = history.some(entry => entry.timestamp === result.timestamp);
 
       if (!isDuplicate) {
@@ -106,15 +106,15 @@ async function main() {
           humidity: result.humidity
         };
         history.push(newEntry);
-        console.log(`Recorded data for ${officeKey}: Temp ${result.temperature}°C, Humidity ${result.humidity}% at ${result.timestamp}`);
+        writeHistory(sensorId, history);
+        console.log(`Recorded data for ${officeKey} (${sensorId}): Temp ${result.temperature}°C, Humidity ${result.humidity}% at ${result.timestamp}`);
       } else {
-        console.log(`Data point for ${result.timestamp} already exists in database for ${officeKey}. No update needed.`);
+        console.log(`Data point for ${result.timestamp} already exists in database for ${officeKey} (${sensorId}). No update needed.`);
       }
     }
   }
 
-  writeHistory(history);
-  console.log(`Finished poll. Total records: ${history.length}`);
+  console.log(`Finished poll for all rooms.`);
 }
 
 main().catch(error => {
