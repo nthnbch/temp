@@ -48,9 +48,7 @@ function writeHistory(sensorId, history) {
 }
 
 async function fetchSensorData(sensorId, endpoint) {
-  const EGAIN_API_URL = endpoint === 'verify' 
-    ? `https://deployment.egain.io/device/verify/${sensorId}`
-    : `https://deployment.egain.io/indoor/${sensorId}?unit=9`;
+  const EGAIN_API_URL = `https://deployment.egain.io/api/indoor/${sensorId}`;
 
   try {
     const response = await fetch(EGAIN_API_URL, {

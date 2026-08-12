@@ -93,9 +93,14 @@ async function updateDashboard(isManual = false) {
     const roomKey = office.key || 'portailcli';
 
     // 1. Fetch live reading and history in parallel for the selected room
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const historyUrl = isLocal 
+      ? `/api/history?room=${encodeURIComponent(roomKey)}`
+      : `https://raw.githubusercontent.com/nthnbch/temp/main/data/${office.sensorId}.json`;
+
     const [liveRes, historyRes] = await Promise.all([
       fetch(`/api/latest?room=${encodeURIComponent(roomKey)}`).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`/api/history?room=${encodeURIComponent(roomKey)}`).then(r => r.ok ? r.json() : [])
+      fetch(historyUrl).then(r => r.ok ? r.json() : [])
     ]);
 
     historyData = historyRes || [];

@@ -42,11 +42,7 @@ function getEgainUrl(roomKey = DEFAULT_ROOM) {
   const config = getRoomConfig(roomKey);
   const sensorId = config.sensorId;
 
-  if (config.endpoint === 'verify') {
-    return `https://deployment.egain.io/device/verify/${sensorId}`;
-  }
-
-  return `https://deployment.egain.io/indoor/${sensorId}?unit=9`;
+  return `https://deployment.egain.io/api/indoor/${sensorId}`;
 }
 
 function getHistoryFilePath(roomKey = DEFAULT_ROOM) {
