@@ -66,7 +66,6 @@ function getSelectedOffice() {
 
 function updateSelectedOfficeInfo() {
   const office = getSelectedOffice();
-  const metaText = `Détecteur localisé dans la salle ${office.label} • Fréquence de rafraîchissement automatique : 5 min`;
 
   if (elOfficeName) {
     elOfficeName.textContent = `TDI • ${office.label}`;
