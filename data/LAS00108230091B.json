@@ -1253,5 +1253,10 @@
     "timestamp": "2026-08-18T18:02:29Z",
     "temperature": 28.32,
     "humidity": 40
+  },
+  {
+    "timestamp": "2026-08-18T18:48:04Z",
+    "temperature": 28.22,
+    "humidity": 39
   }
 ]
