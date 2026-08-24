@@ -1,6 +1,6 @@
 // State
 let historyData = [];
-let activeFilter = '24h'; // '24h', '7d', 'all'
+let activeFilter = '24h'; // '24h', '7d', '1m', '3m', 'ytd', 'all'
 let chart = null;
 
 // DOM Elements
@@ -11,7 +11,7 @@ const elHumidityUpdated = document.getElementById('humidity-updated');
 const elTempTrend = document.getElementById('temp-trend');
 const elHumidityTrend = document.getElementById('humidity-trend');
 
-const elBtnFetch = document.getElementById('btn-fetch');
+// Refresh button removed – not functional in production (Vercel serverless has no /api/fetch-now)
 const elBtnExportCSV = document.getElementById('btn-export-csv');
 const elBtnExportJSON = document.getElementById('btn-export-json');
 const officeSelect = document.getElementById('office-select');
@@ -223,7 +223,7 @@ function processAndRenderData() {
 // Filter records based on timeframe
 function filterHistory(data, filter) {
   if (data.length === 0) return [];
-  
+
   const now = new Date();
   let timeLimit = null;
 
@@ -231,11 +231,54 @@ function filterHistory(data, filter) {
     timeLimit = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   } else if (filter === '7d') {
     timeLimit = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  } else if (filter === '1m') {
+    timeLimit = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  } else if (filter === '3m') {
+    timeLimit = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  } else if (filter === 'ytd') {
+    timeLimit = new Date(now.getFullYear(), 0, 1); // Jan 1st of current year
   }
 
-  if (!timeLimit) return [...data]; // 'all' - return copy
+  if (!timeLimit) return [...data]; // 'all' - return full copy
 
   return data.filter(d => new Date(d.timestamp) >= timeLimit);
+}
+
+// For long time ranges (1m, 3m, ytd, all): aggregate by day, keeping only min & max per day
+function downsampleByDay(data) {
+  if (data.length === 0) return [];
+
+  const byDay = {};
+
+  data.forEach(d => {
+    const date = new Date(d.timestamp);
+    const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+    if (!byDay[dayKey]) {
+      byDay[dayKey] = { minTemp: d, maxTemp: d, minHum: d, maxHum: d };
+    } else {
+      if (d.temperature < byDay[dayKey].minTemp.temperature) byDay[dayKey].minTemp = d;
+      if (d.temperature > byDay[dayKey].maxTemp.temperature) byDay[dayKey].maxTemp = d;
+      if (d.humidity < byDay[dayKey].minHum.humidity) byDay[dayKey].minHum = d;
+      if (d.humidity > byDay[dayKey].maxHum.humidity) byDay[dayKey].maxHum = d;
+    }
+  });
+
+  // Build one synthetic point per day: use day min for temp min and day max for temp max
+  // We emit two points per day: the min-temp moment and the max-temp moment (sorted chronologically)
+  const result = [];
+  Object.keys(byDay).sort().forEach(dayKey => {
+    const { minTemp, maxTemp } = byDay[dayKey];
+    // Add both; if they're the same record, add once
+    const pts = [minTemp, maxTemp].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    pts.forEach((pt, i) => {
+      if (i === 0 || pt.timestamp !== pts[0].timestamp) {
+        result.push(pt);
+      }
+    });
+  });
+
+  return result;
 }
 
 // Stats Calculation
@@ -317,10 +360,14 @@ function resetStats() {
 // Chart.js Configuration & Creation
 function renderChart(data) {
   const ctx = document.getElementById('historyChart').getContext('2d');
-  
-  const labels = data.map(d => formatDate(d.timestamp));
-  const tempValues = data.map(d => d.temperature);
-  const humidityValues = data.map(d => d.humidity);
+
+  // For long-range views, downsample to daily min/max to keep the chart readable
+  const useDailyAgg = ['1m', '3m', 'ytd', 'all'].includes(activeFilter);
+  const chartData = useDailyAgg ? downsampleByDay(data) : data;
+
+  const labels = chartData.map(d => formatDate(d.timestamp));
+  const tempValues = chartData.map(d => d.temperature);
+  const humidityValues = chartData.map(d => d.humidity);
 
   // Gradient configurations for the fills
   const tempGradient = ctx.createLinearGradient(0, 0, 0, 300);
@@ -336,6 +383,10 @@ function renderChart(data) {
     chart.data.labels = labels;
     chart.data.datasets[0].data = tempValues;
     chart.data.datasets[1].data = humidityValues;
+    // Adjust point radius: show dots only for short ranges (too many points otherwise)
+    const pointR = useDailyAgg ? 4 : 3;
+    chart.data.datasets[0].pointRadius = pointR;
+    chart.data.datasets[1].pointRadius = pointR;
     chart.update();
     return;
   }
@@ -502,38 +553,8 @@ function renderChart(data) {
   });
 }
 
-// User Actions: Manual Refresh
-async function forceRefresh() {
-  const icon = elBtnFetch.querySelector('.icon-spin-target');
-  
-  // Add animation
-  icon.classList.add('spinning');
-  elBtnFetch.disabled = true;
-
-  try {
-    const office = getSelectedOffice();
-    const roomKey = office.key || 'portailcli';
-    const response = await fetch(`/api/fetch-now?room=${encodeURIComponent(roomKey)}`, { method: 'POST' });
-    const result = await response.json();
-    
-    if (result.success) {
-      console.log('Force fetch completed successfully:', result.data);
-    } else {
-      console.warn('Force fetch returned failure:', result.error);
-    }
-  } catch (error) {
-    console.error('Error during manual refresh fetch:', error);
-  } finally {
-    // Reload dashboard state
-    await updateDashboard(true);
-    
-    // Stop animation
-    setTimeout(() => {
-      icon.classList.remove('spinning');
-      elBtnFetch.disabled = false;
-    }, 600); // minor delay for nice visual feedback
-  }
-}
+// Note: forceRefresh removed — /api/fetch-now is not available in production (Vercel serverless).
+// Data is updated automatically every 5 minutes via GitHub Actions.
 
 // Export Data (JSON & CSV)
 function exportData(format) {
@@ -582,7 +603,6 @@ if (officeSelect) {
   });
 }
 
-elBtnFetch.addEventListener('click', forceRefresh);
 elBtnExportCSV.addEventListener('click', () => exportData('csv'));
 elBtnExportJSON.addEventListener('click', () => exportData('json'));
 
@@ -595,10 +615,11 @@ tabButtons.forEach(btn => {
   });
 });
 
-// Auto refresh frontend UI state (not forcing server hit, just loading history) every 60 seconds
+// Auto refresh frontend UI state every 5 minutes (GitHub Actions updates data every 5 min)
+// The meta http-equiv refresh has been removed from HTML to avoid double reload
 setInterval(() => {
   updateDashboard();
-}, 60000);
+}, 5 * 60 * 1000);
 
 // Init Load
 updateSelectedOfficeInfo();
