@@ -2798,5 +2798,10 @@
     "timestamp": "2026-09-05T18:53:35Z",
     "temperature": 25.17,
     "humidity": 46
+  },
+  {
+    "timestamp": "2026-09-05T20:55:31Z",
+    "temperature": 25.15,
+    "humidity": 47
   }
 ]
