@@ -3,6 +3,13 @@ let historyData = [];
 let activeFilter = '24h'; // '24h', '7d', '1m', '3m', 'ytd', 'all'
 let chart = null;
 
+const FONT_BODY = "'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const FONT_DISPLAY = "'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.font.family = FONT_BODY;
+}
+
 // DOM Elements
 const elLiveTemp = document.getElementById('live-temp');
 const elLiveHumidity = document.getElementById('live-humidity');
@@ -438,7 +445,7 @@ function renderChart(data) {
           labels: {
             color: '#94a3b8',
             font: {
-              family: 'Inter',
+              family: FONT_BODY,
               size: 12,
               weight: 500
             },
@@ -457,12 +464,12 @@ function renderChart(data) {
           borderWidth: 1,
           padding: 12,
           titleFont: {
-            family: 'Outfit',
+            family: FONT_DISPLAY,
             size: 13,
             weight: 600
           },
           bodyFont: {
-            family: 'Inter',
+            family: FONT_BODY,
             size: 12
           },
           callbacks: {
@@ -488,7 +495,7 @@ function renderChart(data) {
           ticks: {
             color: '#64748b',
             font: {
-              family: 'Inter',
+              family: FONT_BODY,
               size: 10
             },
             maxRotation: 45,
@@ -504,7 +511,7 @@ function renderChart(data) {
             text: 'Température (°C)',
             color: '#ff5b5b',
             font: {
-              family: 'Outfit',
+              family: FONT_DISPLAY,
               weight: 600,
               size: 11
             }
@@ -516,7 +523,7 @@ function renderChart(data) {
           ticks: {
             color: '#ff8a53',
             font: {
-              family: 'Inter',
+              family: FONT_BODY,
               size: 10
             }
           }
@@ -529,7 +536,7 @@ function renderChart(data) {
             text: 'Humidité (%rH)',
             color: '#38bdf8',
             font: {
-              family: 'Outfit',
+              family: FONT_DISPLAY,
               weight: 600,
               size: 11
             }
@@ -541,7 +548,7 @@ function renderChart(data) {
           ticks: {
             color: '#38bdf8',
             font: {
-              family: 'Inter',
+              family: FONT_BODY,
               size: 10
             }
           },
@@ -624,3 +631,12 @@ setInterval(() => {
 // Init Load
 updateSelectedOfficeInfo();
 updateDashboard();
+
+// Ensure chart renders with custom web fonts once loaded
+if (document.fonts) {
+  document.fonts.ready.then(() => {
+    if (chart) {
+      chart.update();
+    }
+  });
+}
